@@ -1,0 +1,146 @@
+import requests
+from bs4 import BeautifulSoup
+import chromadb
+from sentence_transformers import SentenceTransformer
+from urllib.parse import urljoin, urlparse
+import time
+import config
+import json
+import os
+
+# --- BOUNDARY & STATE SETUP ---
+parsed_base = urlparse(config.BASE_URL)
+DOMAIN = parsed_base.netloc
+# Extract the directory path to lock the crawler inside this specific folder 
+ALLOWED_PATH_PREFIX = parsed_base.path.rsplit('/', 1)[0] + '/'  # e.g. "/matwis/amat/iss/"
+# Files we DO NOT want to download
+IGNORED_EXTENSIONS = ('.pdf', '.zip', '.tar', '.gz', '.jpg', '.jpeg', '.png', '.gif', '.mp4')
+# URLS containing these words will be skipped
+IGNORED_PATTERNS = ['index.html']
+STATE_FILE = "crawler_state.json"
+
+
+print(f"Loading AI Model: {config.MODEL_NAME}...")
+model = SentenceTransformer(config.MODEL_NAME, device="cuda")
+
+print("Connecting to ChromaDB... ")
+client = chromadb.PersistentClient(path=config.DB_DIR)
+collection = client.get_or_create_collection(name=config.COLLECTION_NAME)
+
+# --- LOAD PREVIOUS STATE ---
+if os.path.exists(STATE_FILE):
+    print(f"Loading previous crawler state from {STATE_FILE}...")
+    with open(STATE_FILE, 'r') as f:
+        state = json.load(f)
+        visited_urls = set(state.get('visited_urls', []))
+        urls_to_visit = state.get('urls_to_visit', [config.BASE_URL])
+else:
+    print("No previous state found. Starting fresh crawl...")
+    visited_urls = set()
+    urls_to_visit = [config.BASE_URL]
+
+# Use a Session for connection pooling
+session = requests.Session()
+# Optional: Set a User-Agent to avoid being blocked by some servers
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
+
+def is_valid_link(full_url):
+    """Checks if a URL is safe to crawl."""
+    parsed_url = urlparse(full_url)
+    # 1. Did it leave the university domain?
+    if parsed_url.netloc != DOMAIN:
+        return False
+    # 2. Did it leak outside the target folder?
+    if not parsed_url.path.startswith(ALLOWED_PATH_PREFIX):
+        return False
+    # 3. Does it have an ignored file extension?
+    if parsed_url.path.lower().endswith(IGNORED_EXTENSIONS):
+        return False
+    # 4. Is it a frame trap?
+    for pattern in IGNORED_PATTERNS:
+        if pattern in parsed_url.path:
+            return False
+    
+    return True
+
+
+def extract_page_data(url):
+    try:
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f" [!] Failed to fetch {url}: {e}")
+        return None, []
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+        element.decompose()
+
+    text = ' '.join(soup.stripped_strings)
+
+    new_links = []
+
+    for a_tag in soup.find_all('a', href=True):
+        full_url = urljoin(url, a_tag['href'])
+        if urlparse(full_url).netloc == DOMAIN:
+            clean_url = full_url.split('#')[0]
+
+            if is_valid_link(clean_url):
+                new_links.append(clean_url)
+
+    return text, new_links
+
+print(f"\n--- Starting Spelunking Run on {config.BASE_URL} ---\n")
+print(f"Locked to domain: {DOMAIN}")
+print(f"Locked to path: {ALLOWED_PATH_PREFIX}\n")
+
+pages_crawled = 0
+
+
+try:
+    while urls_to_visit and pages_crawled < config.MAX_PAGES:
+        current_url = urls_to_visit.pop(0)
+
+        if current_url in visited_urls:
+            continue
+
+        print(f"[{pages_crawled + 1}] Crawling: {current_url}")
+        text, new_links = extract_page_data(current_url)
+        visited_urls.add(current_url)
+
+        if text and len(text) > 50:
+            embedding = model.encode([text]).tolist()
+            collection.upsert(
+                ids=[current_url],
+                documents=[text],
+                embeddings=embedding,
+                metadatas=[{"url": current_url}]
+            )
+            print("  -> Saved to Vector Index")
+        else:
+            print("  -> Skipped (Not enough text content)")
+
+        for link in new_links:
+            if link not in visited_urls and link not in urls_to_visit:
+                urls_to_visit.append(link)
+
+        pages_crawled += 1
+        time.sleep(config.CRAWL_DELAY)
+
+    print(f"\n--- Crawl Complete! Total pages indexed this run: {pages_crawled} ---")
+
+except KeyboardInterrupt:
+     print("\n[!] Force quit detected. Saving progress before exiting...")
+
+finally:
+    # --- SAVE STATE BEFORE EXITING ---
+    # This block runs no matter what (success, error, or Ctrl+C)
+    with open(STATE_FILE, 'w') as f:
+        json.dump({
+            'visited_urls': list(visited_urls),
+            'urls_to_visit': urls_to_visit
+        }, f)
+    print(f"State saved to {STATE_FILE}. Queue size: {len(urls_to_visit)}. You can resume the crawl later!")
