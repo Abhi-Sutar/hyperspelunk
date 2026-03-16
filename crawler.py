@@ -65,6 +65,21 @@ def is_valid_link(full_url):
     
     return True
 
+def chunk_text(text, chunk_size=300, overlap=50):
+    """Splits text into overlapping chunks based on word count."""
+    words = text.split()
+    chunks = []
+    
+    # Step through the words, moving forward by (chunk_size - overlap)
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = " ".join(words[i:i + chunk_size])
+        chunks.append(chunk)
+        
+        # Stop if we've reached the end of the text
+        if i + chunk_size >= len(words):
+            break
+            
+    return chunks
 
 def extract_page_data(url):
     try:
@@ -112,14 +127,20 @@ try:
         visited_urls.add(current_url)
 
         if text and len(text) > 50:
-            embedding = model.encode([text]).tolist()
-            collection.upsert(
-                ids=[current_url],
-                documents=[text],
-                embeddings=embedding,
-                metadatas=[{"url": current_url}]
-            )
-            print("  -> Saved to Vector Index")
+            # 1. Break the massive page into 300-word chunks
+            text_chunks = chunk_text(text, chunk_size=300, overlap=50)
+            for index, chunk in enumerate(text_chunks):
+                chunk_id = f"{current_url}#chunk{index}"
+
+                # 2. Add the E5 "passage:" prefix
+                embedding = model.encode([f"passage: {chunk}"]).tolist()
+                collection.upsert(
+                    ids=[chunk_id],
+                    documents=[chunk],
+                    embeddings=embedding,
+                    metadatas=[{"url": current_url, "chunk_index": index}]
+                )
+            print(f"  -> Split and saved into {len(text_chunks)} overlapping chunks.")
         else:
             print("  -> Skipped (Not enough text content)")
 

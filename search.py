@@ -25,7 +25,7 @@ if doc_count == 0:
 
 def search_index(query, top_k=3):
     """Embeds the query and searches the vector database."""
-    query_embedding = model.encode([query]).tolist()
+    query_embedding = model.encode([f"query: {query}"]).tolist()
 
     results = collection.query(
         query_embeddings=query_embedding,
