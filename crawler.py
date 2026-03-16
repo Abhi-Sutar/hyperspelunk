@@ -114,6 +114,7 @@ print(f"Locked to path: {ALLOWED_PATH_PREFIX}\n")
 
 pages_crawled = 0
 
+start_time = time.time()  # 1. Record the start time here
 
 try:
     while urls_to_visit and pages_crawled < config.MAX_PAGES:
@@ -157,6 +158,9 @@ except KeyboardInterrupt:
      print("\n[!] Force quit detected. Saving progress before exiting...")
 
 finally:
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"\nTotal time taken: {elapsed_time:.2f} seconds")
     # --- SAVE STATE BEFORE EXITING ---
     # This block runs no matter what (success, error, or Ctrl+C)
     with open(STATE_FILE, 'w') as f:
