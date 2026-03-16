@@ -15,21 +15,25 @@ print("Connecting to ChromaDB... ")
 client = chromadb.PersistentClient(path=config.DB_DIR)
 collection = client.get_or_create_collection(name=config.COLLECTION_NAME)
 
-# Check how many pages we actually have to search through
-doc_count = collection.count()
-print(f"\n--- Spelunk Search Ready! ({doc_count} pages indexed) ---")
-
-if doc_count == 0:
+# Check how many chunks we have
+chunk_count = collection.count()
+if chunk_count == 0:
     print("[!] Your database is empty. Run crawler.py first!")
     exit()
+# Get all metadata to count unique pages
+all_metadata = collection.get(include=["metadatas"])
+unique_pages = set(meta['url'] for meta in all_metadata['metadatas'])
+page_count = len(unique_pages)
 
-def search_index(query, top_k=3):
-    """Embeds the query and searches the vector database."""
+print(f"\n--- Spelunk Search Ready! ({chunk_count} chunks across {page_count} pages indexed) ---")
+
+def search_index(query, top_unique=3, fetch_limit=15):
+    """Embeds the query, fetches a wide net of chunks, and groups by unique URL."""
     query_embedding = model.encode([f"query: {query}"]).tolist()
 
     results = collection.query(
         query_embeddings=query_embedding,
-        n_results=top_k
+        n_results=fetch_limit
     )
 
     # Check if we got results
@@ -37,19 +41,42 @@ def search_index(query, top_k=3):
         print("\nNo relevant matches found.")
         return
 
-    print(f"\n--- Top {top_k} Results for '{query}' ---\n")
+    print(f"\n--- Top {top_unique} Results for '{query}' ---\n")
+
+    seen_urls = set()
+    matches_found = 0
+
     for i in range(len(results['documents'][0])):
         text = results['documents'][0][i]
         url = results['metadatas'][0][i]['url']
         score = results['distances'][0][i]
 
+        # # E5 Quality Threshold (0.45 is a solid cutoff for "good" matches)
+        # if score > 0.45: 
+        #     continue
+
+        # DEDUPLICATION: If we already showed this URL, skip to the next one
+        if url in seen_urls:
+            continue
+
+        # We found a new unique page!
+        seen_urls.add(url)
+        matches_found += 1
+
         # Clean up the text for the terminal (truncate to 250 chars)
         snippet = textwrap.shorten(text, width=250, placeholder=" ... [read more]")
 
-        print(f"Match {i+1} (Distance: {score:.4f})")
+        print(f"Match {matches_found} (Distance: {score:.4f})")
         print(f"Link: {url}")
         print(f"Text: {snippet}\n")
         print("-" * 60 + "\n")
+
+        # Stop once we hit our target number of unique pages
+        if matches_found >= top_unique:
+            break
+
+    if matches_found == 0:
+        print("No highly relevant matches found (results were below the quality threshold).")
 
 # --- The Interactive Loop ---
 while True:
