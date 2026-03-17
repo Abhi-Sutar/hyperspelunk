@@ -34,10 +34,12 @@ if os.path.exists(STATE_FILE):
         state = json.load(f)
         visited_urls = set(state.get('visited_urls', []))
         urls_to_visit = state.get('urls_to_visit', [config.BASE_URL])
+        graph_data = state.get('graph_data', {})
 else:
     print("No previous state found. Starting fresh crawl...")
     visited_urls = set()
     urls_to_visit = [config.BASE_URL]
+    graph_data = {}
 
 # Use a Session for connection pooling
 session = requests.Session()
@@ -127,6 +129,9 @@ try:
         text, new_links = extract_page_data(current_url)
         visited_urls.add(current_url)
 
+        # Save graph connections
+        graph_data[current_url] = new_links
+
         if text and len(text) > 50:
             # 1. Break the massive page into 300-word chunks
             text_chunks = chunk_text(text, chunk_size=300, overlap=50)
@@ -166,6 +171,7 @@ finally:
     with open(STATE_FILE, 'w') as f:
         json.dump({
             'visited_urls': list(visited_urls),
-            'urls_to_visit': urls_to_visit
+            'urls_to_visit': urls_to_visit,
+            'graph_data': graph_data
         }, f)
     print(f"State saved to {STATE_FILE}. Queue size: {len(urls_to_visit)}. You can resume the crawl later!")
