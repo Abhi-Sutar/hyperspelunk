@@ -56,13 +56,19 @@ def search_index(query, top_unique=3, fetch_limit=15):
         # --- RE-RANKING MATH (WITH CEILING) ---
         # Distance: lower is better. PageRank: higher is better.
         # We artificially lower the distance score if the page is authoritative.
-        PR_MULTIPLIER = 0.5   
-        AUTH_MULTIPLIER = 1.0 # We trust Authority (HITS) more than raw PageRank
+        PR_MULTIPLIER = 3.0   
+        AUTH_MULTIPLIER = 5.0 # We trust Authority (HITS) more than raw PageRank
         MAX_ALLOWED_BOOST = 0.08 # The absolute maximum we will artificially lower the distance
 
-        raw_boost = (pagerank * PR_MULTIPLIER) + (authority * AUTH_MULTIPLIER)
-        applied_boost = min(raw_boost, MAX_ALLOWED_BOOST)  # Cap the boost to prevent over-boosting
-        adjusted_score = distance - applied_boost
+        # --- THE CONTEXT GATE ---
+        # If the semantic distance is worse than 0.42, it's a bad text match.
+        # Do NOT let Authority/PageRank rescue it. Give it zero boost.
+        if distance > 0.42:
+            applied_boost = 0.0
+        else:
+            raw_boost = (pagerank * PR_MULTIPLIER) + (authority * AUTH_MULTIPLIER)
+            applied_boost = min(raw_boost, MAX_ALLOWED_BOOST)  # Cap the boost to prevent over-boosting
+            adjusted_score = distance - applied_boost
 
         raw_results.append({
             "url": url,
