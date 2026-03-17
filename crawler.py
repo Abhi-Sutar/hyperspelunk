@@ -14,7 +14,9 @@ DOMAIN = parsed_base.netloc
 # Extract the directory path to lock the crawler inside this specific folder 
 ALLOWED_PATH_PREFIX = parsed_base.path.rsplit('/', 1)[0] + '/'  # e.g. "/matwis/amat/iss/"
 # Files we DO NOT want to download
-IGNORED_EXTENSIONS = ('.pdf', '.zip', '.tar', '.gz', '.jpg', '.jpeg', '.png', '.gif', '.mp4')
+# IGNORED_EXTENSIONS = ('.pdf', '.zip', '.tar', '.gz', '.jpg', '.jpeg', '.png', '.gif', '.mp4', '.avi', '.mp3', '.ogg', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx')
+# Allowed files
+ALLOWED_EXTENSIONS = ('.html', '.htm', '.txt', '.md', '.php', '.asp', '.aspx')
 # URLS containing these words will be skipped
 IGNORED_PATTERNS = ['index.html']
 STATE_FILE = "crawler_state.json"
@@ -57,8 +59,11 @@ def is_valid_link(full_url):
     # 2. Did it leak outside the target folder?
     if not parsed_url.path.startswith(ALLOWED_PATH_PREFIX):
         return False
-    # 3. Does it have an ignored file extension?
-    if parsed_url.path.lower().endswith(IGNORED_EXTENSIONS):
+    # 3. Does it have an extension, and is it allowed?
+    # os.path.splitext grabs the extension (e.g., '.html'). If there is no extension, it returns an empty string ''.
+    ext = os.path.splitext(parsed_url.path)[1].lower()    
+    # If an extension exists, BUT it's not in our allowed list, skip it!
+    if ext and ext not in ALLOWED_EXTENSIONS:
         return False
     # 4. Is it a frame trap?
     for pattern in IGNORED_PATTERNS:
