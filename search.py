@@ -108,6 +108,7 @@ def search_index(query, top_unique=3, fetch_limit=15):
         print(f"Match {matches_found} (Score: {adjusted_score:.4f})")
         print(f"Link: {url}")
         print(f"PageRank: {pagerank:.4f}  | Authority: {authority:.4f} | Semantic Distance: {distance:.4f}")
+        print(f"BOOST APPLIED: {match['applied_boost']:.4f} (Raw Boost: {match['pagerank'] * PR_MULTIPLIER + match['authority'] * AUTH_MULTIPLIER:.4f})")
         print(f"Text: {snippet}\n")
         print("-" * 60 + "\n")
 
