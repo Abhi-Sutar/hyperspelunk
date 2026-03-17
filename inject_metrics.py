@@ -46,8 +46,16 @@ for i in range(len(all_data['ids'])):
     update_ids.append(chunk_id)
     update_metadatas.append(metadata)
 
-# Push the updated metadata back into ChromaDB in one massive batch
-collection.update(ids=update_ids, metadatas=update_metadatas)
+# Push the updated metadata back into ChromaDB in safe batches
+BATCH_SIZE = 5000
+print(f"Pushing {len(update_ids)} updates to ChromaDB in batches of {BATCH_SIZE}...")
+
+for i in range(0, len(update_ids), BATCH_SIZE):
+    batch_ids = update_ids[i:i + BATCH_SIZE]
+    batch_metadatas = update_metadatas[i:i + BATCH_SIZE]
+    
+    collection.update(ids=batch_ids, metadatas=batch_metadatas)
+    print(f" -> Successfully injected batch ({i + len(batch_ids)} / {len(update_ids)})")
 
 print("--- Injection Complete! Your DB has both PageRank AND Authority! ---")
 
