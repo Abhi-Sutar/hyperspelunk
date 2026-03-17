@@ -210,3 +210,4 @@ my_vector_db/
 onnx_model/
 config.py
 crawler_state.json
+*.html
