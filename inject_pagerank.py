@@ -4,9 +4,9 @@ import networkx as nx
 import config
 
 print("1. Loading Graph Map...")
-with open('crawler_state.json', 'r') as f:
+with open("crawler_state.json", "r") as f:
     state = json.load(f)
-    graph_data = state.get('graph_data', {})
+    graph_data = state.get("graph_data", {})
 
 
 print("2. Calculating Global PageRank...")
@@ -30,17 +30,17 @@ all_data = collection.get(include=["metadatas"])
 update_ids = []
 update_metadatas = []
 
-for i in range(len(all_data['ids'])):
-    chunk_id = all_data['ids'][i]
-    metadata = all_data['metadatas'][i]
-    url = metadata['url']
-    
+for i in range(len(all_data["ids"])):
+    chunk_id = all_data["ids"][i]
+    metadata = all_data["metadatas"][i]
+    url = metadata["url"]
+
     # Get the rank for this URL (default to 0 if it's an orphan page)
     rank = pagerank_scores.get(url, 0.0)
-    
+
     # Add the rank to the chunk's metadata
-    metadata['pagerank'] = rank
-    
+    metadata["pagerank"] = rank
+
     update_ids.append(chunk_id)
     update_metadatas.append(metadata)
 
