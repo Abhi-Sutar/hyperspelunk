@@ -50,18 +50,27 @@ def search_index(query, top_unique=3, fetch_limit=15):
         distance = results['distances'][0][i]
         # Get the PageRank score from metadata (default to 0 if not present)
         pagerank = results['metadatas'][0][i].get('pagerank', 0.0)
+        # Get the HITS scores from metadata (default to 0 if not present)
+        authority = results['metadatas'][0][i].get('authority', 0.0)
 
-        # --- THE RE-RANKING MATH ---
+        # --- RE-RANKING MATH (WITH CEILING) ---
         # Distance: lower is better. PageRank: higher is better.
         # We artificially lower the distance score if the page is authoritative.
-        PR_BOOST_MULTIPLIER = 2.0 
-        adjusted_score = distance - (pagerank * PR_BOOST_MULTIPLIER)
+        PR_MULTIPLIER = 0.5   
+        AUTH_MULTIPLIER = 1.0 # We trust Authority (HITS) more than raw PageRank
+        MAX_ALLOWED_BOOST = 0.08 # The absolute maximum we will artificially lower the distance
+
+        raw_boost = (pagerank * PR_MULTIPLIER) + (authority * AUTH_MULTIPLIER)
+        applied_boost = min(raw_boost, MAX_ALLOWED_BOOST)  # Cap the boost to prevent over-boosting
+        adjusted_score = distance - applied_boost
 
         raw_results.append({
             "url": url,
             "text": text,
             "distance": distance,
             "pagerank": pagerank,
+            "authority": authority,
+            "applied_boost": applied_boost,
             "adjusted_score": adjusted_score
         })
 
@@ -98,7 +107,7 @@ def search_index(query, top_unique=3, fetch_limit=15):
 
         print(f"Match {matches_found} (Score: {adjusted_score:.4f})")
         print(f"Link: {url}")
-        print(f"PageRank: {pagerank:.4f} | Original Distance: {distance:.4f}")
+        print(f"PageRank: {pagerank:.4f}  | Authority: {authority:.4f} | Semantic Distance: {distance:.4f}")
         print(f"Text: {snippet}\n")
         print("-" * 60 + "\n")
 
