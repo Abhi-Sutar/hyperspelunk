@@ -50,25 +50,38 @@ def search_index(query, top_unique=3, fetch_limit=15):
         distance = results["distances"][0][i]
         # Get the PageRank score from metadata (default to 0 if not present)
         pagerank = results["metadatas"][0][i].get("pagerank", 0.0)
-        # Get the HITS scores from metadata (default to 0 if not present)
+        # Get the HITS and Hub scores from metadata (default to 0 if not present)
         authority = results["metadatas"][0][i].get("authority", 0.0)
+        hub = results["metadatas"][0][i].get("hub", 0.0)
 
         # --- RE-RANKING MATH (WITH CEILING) ---
         # Distance: lower is better. PageRank: higher is better.
         # We artificially lower the distance score if the page is authoritative.
         PR_MULTIPLIER = 3.0
         AUTH_MULTIPLIER = 5.0  # We trust Authority (HITS) more than raw PageRank
+        HUB_PENALTY = (
+            10.0  # If it's a strong hub but not authoritative, we penalize it heavily
+        )
         MAX_ALLOWED_BOOST = (
             0.08  # The absolute maximum we will artificially lower the distance
         )
 
-        # --- THE CONTEXT GATE ---
+        # --- THE CONTEXT GATE & HUB RATIO ---
         # If the semantic distance is worse than 0.42, it's a bad text match.
         # Do NOT let Authority/PageRank rescue it. Give it zero boost.
         if distance > 0.42:
             applied_boost = 0.0
         else:
-            raw_boost = (pagerank * PR_MULTIPLIER) + (authority * AUTH_MULTIPLIER)
+            # Only apply the penalty if the page is heavily a Hub and lacks Authority
+            hub_penalty_value = 0.0
+            if hub > authority:
+                # We only penalize the DIFFERENCE, so real pages aren't hurt
+                hub_penalty_value = (hub - authority) * HUB_PENALTY
+            raw_boost = (
+                (pagerank * PR_MULTIPLIER)
+                + (authority * AUTH_MULTIPLIER)
+                - (hub * hub_penalty_value)
+            )
             applied_boost = min(
                 raw_boost, MAX_ALLOWED_BOOST
             )  # Cap the boost to prevent over-boosting
@@ -81,6 +94,7 @@ def search_index(query, top_unique=3, fetch_limit=15):
                 "distance": distance,
                 "pagerank": pagerank,
                 "authority": authority,
+                "hub": hub,
                 "applied_boost": applied_boost,
                 "adjusted_score": adjusted_score,
             }
@@ -99,6 +113,8 @@ def search_index(query, top_unique=3, fetch_limit=15):
         url = match["url"]
         distance = match["distance"]
         pagerank = match["pagerank"]
+        authority = match["authority"]
+        hub = match["hub"]
         adjusted_score = match["adjusted_score"]
 
         # # E5 Quality Threshold (0.45 is a solid cutoff for "good" matches)
@@ -119,10 +135,10 @@ def search_index(query, top_unique=3, fetch_limit=15):
         print(f"Match {matches_found} (Score: {adjusted_score:.4f})")
         print(f"Link: {url}")
         print(
-            f"PageRank: {pagerank:.4f}  | Authority: {authority:.4f} | Semantic Distance: {distance:.4f}"
+            f"PageRank: {pagerank:.4f}  | Authority: {authority:.4f} | Hub: {hub:.4f} | Semantic Distance: {distance:.4f}"
         )
         print(
-            f"BOOST APPLIED: {match['applied_boost']:.4f} (Raw Boost: {match['pagerank'] * PR_MULTIPLIER + match['authority'] * AUTH_MULTIPLIER:.4f})"
+            f"BOOST APPLIED: {match['applied_boost']:.4f} (Raw Boost: {match['pagerank'] * PR_MULTIPLIER + match['authority'] * AUTH_MULTIPLIER - match['hub'] * HUB_PENALTY:.4f})"
         )
         print(f"Text: {snippet}\n")
         print("-" * 60 + "\n")

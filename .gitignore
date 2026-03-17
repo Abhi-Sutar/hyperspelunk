@@ -211,3 +211,4 @@ onnx_model/
 config.py
 crawler_state.json
 *.html
+*.graphml
