@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import chromadb
 from sentence_transformers import SentenceTransformer
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, quote, urlunparse, urlsplit, urlunsplit
 import time
 import config
 import json
@@ -52,7 +52,7 @@ session.headers.update({
 
 def is_valid_link(full_url):
     """Checks if a URL is safe to crawl."""
-    parsed_url = urlparse(full_url)
+    parsed_url = urlsplit(full_url)
     # 1. Did it leave the university domain?
     if parsed_url.netloc != DOMAIN:
         return False
@@ -107,8 +107,16 @@ def extract_page_data(url):
 
     for a_tag in soup.find_all('a', href=True):
         full_url = urljoin(url, a_tag['href'])
-        if urlparse(full_url).netloc == DOMAIN:
-            clean_url = full_url.split('#')[0]
+        if urlsplit(full_url).netloc == DOMAIN:
+            # 1. Strip the anchor tags
+            no_anchor_url = full_url.split('#')[0]
+
+            # --- Chrome-style Auto-Encoding ---
+            parsed = urlsplit(no_anchor_url)
+            safe_path = quote(parsed.path, safe='/;%')
+
+            # Put the URL back together (urlunsplit takes exactly 5 arguments)
+            clean_url = urlunsplit((parsed.scheme, parsed.netloc, safe_path, parsed.query, ''))
 
             if is_valid_link(clean_url):
                 new_links.append(clean_url)
@@ -126,6 +134,9 @@ start_time = time.time()  # 1. Record the start time here
 try:
     while urls_to_visit and pages_crawled < config.MAX_PAGES:
         current_url = urls_to_visit.pop(0)
+
+        if not is_valid_link(current_url):
+            continue
 
         if current_url in visited_urls:
             continue
