@@ -3,13 +3,17 @@ from sentence_transformers import SentenceTransformer
 import config
 import textwrap
 import os
+import torch  # Add this import
 
 # Silence Hugging Face token warnings for a cleaner terminal
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
-print(f"Loading AI Model: {config.MODEL_NAME} onto GPU...")
-model = SentenceTransformer(config.MODEL_NAME, device="cuda")
+# Check for GPU availability
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+print(f"Loading AI Model: {config.MODEL_NAME} onto {device.upper()}...")
+model = SentenceTransformer(config.MODEL_NAME, device=device)
 
 print("Connecting to ChromaDB... ")
 client = chromadb.PersistentClient(path=config.DB_DIR)
