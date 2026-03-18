@@ -8,28 +8,39 @@ import config
 import json
 import os
 
+# --- Configuration Variables ---
+BASE_URL = config.BASE_URL
+MAX_PAGES = config.MAX_PAGES
+CRAWL_DELAY = config.CRAWL_DELAY
+REQUEST_TIMEOUT = config.REQUEST_TIMEOUT
+USER_AGENT = config.USER_AGENT
+
+ALLOWED_EXTENSIONS = config.ALLOWED_EXTENSIONS
+IGNORED_PATTERNS = config.IGNORED_PATTERNS
+
+CHUNK_SIZE = config.CHUNK_SIZE
+CHUNK_OVERLAP = config.CHUNK_OVERLAP
+
+COLLECTION_NAME = config.COLLECTION_NAME
+MODEL_NAME = config.MODEL_NAME
+EMBEDDING_DEVICE = config.EMBEDDING_DEVICE
+DB_DIR = str(config.DB_DIR)  # Cast to string since it's a Path object
+STATE_FILE = config.STATE_FILE
+
 # --- BOUNDARY & STATE SETUP ---
-parsed_base = urlparse(config.BASE_URL)
+parsed_base = urlparse(BASE_URL)
 DOMAIN = parsed_base.netloc
 # Extract the directory path to lock the crawler inside this specific folder
 ALLOWED_PATH_PREFIX = (
     parsed_base.path.rsplit("/", 1)[0] + "/"
 )  # e.g. "/matwis/amat/iss/"
-# Files we DO NOT want to download
-# IGNORED_EXTENSIONS = ('.pdf', '.zip', '.tar', '.gz', '.jpg', '.jpeg', '.png', '.gif', '.mp4', '.avi', '.mp3', '.ogg', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx')
-# Allowed files
-ALLOWED_EXTENSIONS = (".html", ".htm", ".txt", ".md", ".php", ".asp", ".aspx")
-# URLS containing these words will be skipped
-IGNORED_PATTERNS = ["index.html"]
-STATE_FILE = "crawler_state.json"
 
-
-print(f"Loading AI Model: {config.MODEL_NAME}...")
-model = SentenceTransformer(config.MODEL_NAME, device="cuda")
+print(f"Loading AI Model: {MODEL_NAME}...")
+model = SentenceTransformer(MODEL_NAME, device=EMBEDDING_DEVICE)
 
 print("Connecting to ChromaDB... ")
-client = chromadb.PersistentClient(path=config.DB_DIR)
-collection = client.get_or_create_collection(name=config.COLLECTION_NAME)
+client = chromadb.PersistentClient(path=DB_DIR)
+collection = client.get_or_create_collection(name=COLLECTION_NAME)
 
 # --- LOAD PREVIOUS STATE ---
 if os.path.exists(STATE_FILE):
@@ -37,22 +48,18 @@ if os.path.exists(STATE_FILE):
     with open(STATE_FILE, "r") as f:
         state = json.load(f)
         visited_urls = set(state.get("visited_urls", []))
-        urls_to_visit = state.get("urls_to_visit", [config.BASE_URL])
+        urls_to_visit = state.get("urls_to_visit", [BASE_URL])
         graph_data = state.get("graph_data", {})
 else:
     print("No previous state found. Starting fresh crawl...")
     visited_urls = set()
-    urls_to_visit = [config.BASE_URL]
+    urls_to_visit = [BASE_URL]
     graph_data = {}
 
 # Use a Session for connection pooling
 session = requests.Session()
-# Optional: Set a User-Agent to avoid being blocked by some servers
-session.headers.update(
-    {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-)
+# Set a User-Agent from config to avoid being blocked by some servers
+session.headers.update({"User-Agent": USER_AGENT})
 
 
 def is_valid_link(full_url):
@@ -65,9 +72,7 @@ def is_valid_link(full_url):
     if not parsed_url.path.startswith(ALLOWED_PATH_PREFIX):
         return False
     # 3. Does it have an extension, and is it allowed?
-    # os.path.splitext grabs the extension (e.g., '.html'). If there is no extension, it returns an empty string ''.
     ext = os.path.splitext(parsed_url.path)[1].lower()
-    # If an extension exists, BUT it's not in our allowed list, skip it!
     if ext and ext not in ALLOWED_EXTENSIONS:
         return False
     # 4. Is it a frame trap?
@@ -78,7 +83,7 @@ def is_valid_link(full_url):
     return True
 
 
-def chunk_text(text, chunk_size=300, overlap=50):
+def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     """Splits text into overlapping chunks based on word count."""
     words = text.split()
     chunks = []
@@ -97,7 +102,7 @@ def chunk_text(text, chunk_size=300, overlap=50):
 
 def extract_page_data(url):
     try:
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
     except requests.RequestException as e:
         print(f" [!] Failed to fetch {url}: {e}")
@@ -133,7 +138,7 @@ def extract_page_data(url):
     return text, new_links
 
 
-print(f"\n--- Starting Spelunking Run on {config.BASE_URL} ---\n")
+print(f"\n--- Starting Spelunking Run on {BASE_URL} ---\n")
 print(f"Locked to domain: {DOMAIN}")
 print(f"Locked to path: {ALLOWED_PATH_PREFIX}\n")
 
@@ -142,7 +147,7 @@ pages_crawled = 0
 start_time = time.time()  # 1. Record the start time here
 
 try:
-    while urls_to_visit and pages_crawled < config.MAX_PAGES:
+    while urls_to_visit and pages_crawled < MAX_PAGES:
         current_url = urls_to_visit.pop(0)
 
         if not is_valid_link(current_url):
@@ -159,8 +164,8 @@ try:
         graph_data[current_url] = new_links
 
         if text and len(text) > 50:
-            # 1. Break the massive page into 300-word chunks
-            text_chunks = chunk_text(text, chunk_size=300, overlap=50)
+            # 1. Break the massive page into configurable word chunks
+            text_chunks = chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP)
             for index, chunk in enumerate(text_chunks):
                 chunk_id = f"{current_url}#chunk{index}"
 
@@ -181,7 +186,7 @@ try:
                 urls_to_visit.append(link)
 
         pages_crawled += 1
-        time.sleep(config.CRAWL_DELAY)
+        time.sleep(CRAWL_DELAY)
 
     print(f"\n--- Crawl Complete! Total pages indexed this run: {pages_crawled} ---")
 
