@@ -5,6 +5,18 @@ import textwrap
 import os
 import torch  # Add this import
 
+# --- Configuration Variables ---
+MODEL_NAME = config.MODEL_NAME
+DB_DIR = str(config.DB_DIR)  # Cast to string since it's a Path object
+COLLECTION_NAME = config.COLLECTION_NAME
+TOP_UNIQUE_RESULTS = config.TOP_UNIQUE_RESULTS
+FETCH_LIMIT = config.FETCH_LIMIT
+DISTANCE_THRESHOLD = config.DISTANCE_THRESHOLD
+PR_MULTIPLIER = config.PR_MULTIPLIER
+AUTH_MULTIPLIER = config.AUTH_MULTIPLIER
+HUB_PENALTY = config.HUB_PENALTY
+MAX_ALLOWED_BOOST = config.MAX_BOOST
+
 # Silence Hugging Face token warnings for a cleaner terminal
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -12,12 +24,12 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 # Check for GPU availability
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-print(f"Loading AI Model: {config.MODEL_NAME} onto {device.upper()}...")
-model = SentenceTransformer(config.MODEL_NAME, device=device)
+print(f"Loading AI Model: {MODEL_NAME} onto {device.upper()}...")
+model = SentenceTransformer(MODEL_NAME, device=device)
 
 print("Connecting to ChromaDB... ")
-client = chromadb.PersistentClient(path=config.DB_DIR)
-collection = client.get_or_create_collection(name=config.COLLECTION_NAME)
+client = chromadb.PersistentClient(path=DB_DIR)
+collection = client.get_or_create_collection(name=COLLECTION_NAME)
 
 # Check how many chunks we have
 chunk_count = collection.count()
@@ -34,7 +46,7 @@ print(
 )
 
 
-def search_index(query, top_unique=3, fetch_limit=15):
+def search_index(query, top_unique=TOP_UNIQUE_RESULTS, fetch_limit=FETCH_LIMIT):
     """Embeds the query, fetches chunks, applies PageRank boost, and groups unique URLs."""
     query_embedding = model.encode([f"query: {query}"]).tolist()
 
@@ -58,22 +70,10 @@ def search_index(query, top_unique=3, fetch_limit=15):
         authority = results["metadatas"][0][i].get("authority", 0.0)
         hub = results["metadatas"][0][i].get("hub", 0.0)
 
-        # --- RE-RANKING MATH (WITH CEILING) ---
-        # Distance: lower is better. PageRank: higher is better.
-        # We artificially lower the distance score if the page is authoritative.
-        PR_MULTIPLIER = 3.0
-        AUTH_MULTIPLIER = 5.0  # We trust Authority (HITS) more than raw PageRank
-        HUB_PENALTY = (
-            10.0  # If it's a strong hub but not authoritative, we penalize it heavily
-        )
-        MAX_ALLOWED_BOOST = (
-            0.08  # The absolute maximum we will artificially lower the distance
-        )
-
         # --- THE CONTEXT GATE & HUB RATIO ---
-        # If the semantic distance is worse than 0.42, it's a bad text match.
+        # If the semantic distance is worse than our threshold, it's a bad text match.
         # Do NOT let Authority/PageRank rescue it. Give it zero boost.
-        if distance > 0.42:
+        if distance > DISTANCE_THRESHOLD:
             applied_boost = 0.0
         else:
             # Only apply the penalty if the page is heavily a Hub and lacks Authority
@@ -120,10 +120,6 @@ def search_index(query, top_unique=3, fetch_limit=15):
         authority = match["authority"]
         hub = match["hub"]
         adjusted_score = match["adjusted_score"]
-
-        # # E5 Quality Threshold (0.45 is a solid cutoff for "good" matches)
-        # if score > 0.45:
-        #     continue
 
         # DEDUPLICATION: If we already showed this URL, skip to the next one
         if url in seen_urls:
