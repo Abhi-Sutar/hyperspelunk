@@ -3,8 +3,14 @@ import chromadb
 import networkx as nx
 import config
 
+# --- Configuration Variables ---
+STATE_FILE = config.STATE_FILE
+DB_DIR = str(config.DB_DIR)  # Cast to string since it's a Path object in config
+COLLECTION_NAME = config.COLLECTION_NAME
+BATCH_SIZE = config.METRICS_BATCH_SIZE
+
 print("1. Loading Graph Map...")
-with open("crawler_state.json", "r") as f:
+with open(STATE_FILE, "r") as f:
     state = json.load(f)
     graph_data = state.get("graph_data", {})
 
@@ -19,8 +25,8 @@ pagerank_scores = nx.pagerank(G)
 hubs, authorities = nx.hits(G, max_iter=1000)
 
 print("3. Connecting to ChromaDB...")
-client = chromadb.PersistentClient(path=config.DB_DIR)
-collection = client.get_collection(name=config.COLLECTION_NAME)
+client = chromadb.PersistentClient(path=DB_DIR)
+collection = client.get_collection(name=COLLECTION_NAME)
 
 print("4. Injecting Scores into Vector Metadata...")
 all_data = collection.get(include=["metadatas"])
@@ -47,7 +53,6 @@ for i in range(len(all_data["ids"])):
     update_metadatas.append(metadata)
 
 # Push the updated metadata back into ChromaDB in safe batches
-BATCH_SIZE = 5000
 print(f"Pushing {len(update_ids)} updates to ChromaDB in batches of {BATCH_SIZE}...")
 
 for i in range(0, len(update_ids), BATCH_SIZE):
