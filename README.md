@@ -4,9 +4,9 @@ hyperspelunk deep-crawls a specific website, builds a local multilingual semanti
 
 It also produces exploratory visualizations of the crawl (a Gephi export and an interactive HTML site map).
 
-The default target checked into local config is a university Introduction to Solid State Physics course site, but hyperspelunk works against any single site you point it at.
 
 ## Quick Start
+Edit the ```BASE_URL``` in the ```example_config.py``` file.
 
 ```bash
 uv sync --extra cpu
