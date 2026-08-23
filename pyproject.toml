@@ -1,6 +1,47 @@
 [project]
 name = "hyperspelunk"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
-dependencies = []
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "beautifulsoup4>=4.14,<5",
+    "chromadb>=1.5,<2",
+    "networkx>=3.6,<4",
+    "numpy>=2.3,<3",
+    "python-dotenv>=1.2,<2",
+    "pyvis>=0.3,<0.4",
+    "requests>=2.32,<3",
+    "sentence-transformers>=5.3,<6",
+]
+
+[project.optional-dependencies]
+gpu-cu126 = [
+    "torch==2.10.0+cu126",
+    "torchvision==0.25.0+cu126",
+]
+cpu = [
+    "torch==2.10.0",
+    "torchvision==0.25.0",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu126", marker = "extra == 'gpu-cu126'" },
+    { index = "pytorch-cpu", marker = "extra == 'cpu' and extra != 'gpu-cu126'" },
+]
+torchvision = [
+    { index = "pytorch-cu126", marker = "extra == 'gpu-cu126'" },
+    { index = "pytorch-cpu", marker = "extra == 'cpu' and extra != 'gpu-cu126'" },
+]
